@@ -1,6 +1,6 @@
 library(doParallel)
 
-nodes =detectCores()
+nodes = min(detectCores(),4)
 registerDoParallel(nodes)
 
 source("double_saddle_point_approx_8_7_2014.R")
@@ -15,7 +15,7 @@ gene_mu_rate_file = args[4]
 gene_polyphen_file = args[5]
 resultFile = args[6]
 
-DNM = read.table(DNMFile,header=T,stringsAsFactors=F) 
+DNM = read.table(DNMFile,header=T,stringsAsFactors=F,colClasses=c("character","integer","character","character","character")) 
 
 gene_mu_rate = read.table(gene_mu_rate_file,header=T,stringsAsFactors=F)
 gene_polyphen = read.table(gene_polyphen_file,stringsAsFactors=F,header=T,fill=T)
@@ -81,18 +81,18 @@ compute_pvalue = function(igene){
   ndenovo = dim(DNM_tmp)[1]
   scores=0
   scores2=0 ##for unweighted
+  pvalue =1
+  pvalue.unweight =1
   
-   if(dim(gene_mu_rate_tmp)[1] <=0){
-  		pvalue =1
-  		pvalue.unweight =1
-  		return(c(geneIDs[igene],nsample,nsnv_o,nsnv,ndenovo,scores2,round(scores,3),pvalue,pvalue.unweight,NA))
+   if(dim(gene_mu_rate_tmp)[1] <=0){ 		
+  		return(data.frame(geneID = as.character(geneIDs[igene]),nsample.adj = nsample,nsites = nsnv_o,nsites.analysis = nsnv,ndenovo = ndenovo,score = round(scores,3), pvalue.fitDNM = pvalue, pvalue.Poisson = pvalue.unweight))
   }
   	ref_pos = which(gene_mu_rate_tmp==0,arr.ind=T)
   	ref_pos_v = apply(ref_pos,1,function(x) ((x[2]-1)*nsnv+x[1]))  
  
   
   if(ndenovo ==0 ) {
-  	return(c(geneIDs[igene],nsample,nsnv,ndenovo,1,NA,1,1,NA))
+  	return(data.frame(geneID = as.character(geneIDs[igene]),nsample.adj = nsample,nsites = nsnv_o,nsites.analysis = nsnv,ndenovo = ndenovo,score = round(scores,3), pvalue.fitDNM = pvalue, pvalue.Poisson = pvalue.unweight))
   }
   for(idenovo in c(1:ndenovo)){
   	###check if the position exist in the ccds(not included promoter region)
@@ -111,19 +111,14 @@ compute_pvalue = function(igene){
 
 	
 	
-	cat(c(geneIDs[igene],nsample,nsnv_o,nsnv,ndenovo,round(scores,3),pvalue,pvalue.unweight,"\n"))
-	return(c(geneIDs[igene],nsample,nsnv_o,nsnv,ndenovo,round(scores,3),pvalue,pvalue.unweight))
+	return(data.frame(geneID = as.character(geneIDs[igene]),nsample.adj = nsample,nsites = nsnv_o,nsites.analysis = nsnv,ndenovo = ndenovo,score = round(scores,3), pvalue.fitDNM = pvalue, pvalue.Poisson = pvalue.unweight))
 }
 
 
-	stat.list = foreach(igene = 1:ngene, .combine=rbind) %dopar%{
+stat.list = foreach(igene = 1:ngene,.combine=rbind) %dopar%{
 		
-		compute_pvalue(igene)
-	}
+	compute_pvalue(igene)
+}
 	
 	
-
-	
-	colnames(stat.list) = c("geneID","nsample.adj","nsnv","nsnv.analysis","ndenovo","score","pvalue.fitDNM","pvalue.Poisson")
-
-	write.table(stat.list,file=resultFile,quote=F,row.names=F,append=T,col.names=T)
+write.table(stat.list,file=resultFile,quote=F,row.names=F,append=F,col.names=T)
